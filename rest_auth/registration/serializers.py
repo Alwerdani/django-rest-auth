@@ -11,6 +11,7 @@ try:
     from allauth.socialaccount.helpers import complete_social_login
     from allauth.socialaccount.models import SocialAccount
     from allauth.socialaccount.providers.base import AuthProcess
+    from allauth.socialaccount.providers.oauth2.client import OAuth2Error
 except ImportError:
     raise ImportError("allauth needs to be added to INSTALLED_APPS.")
 
@@ -80,7 +81,7 @@ class SocialLoginSerializer(serializers.Serializer):
         # Case 1: We received the access_token
         if attrs.get('access_token'):
             access_token = attrs.get('access_token')
-
+            token = {"access_token": access_token}
         # Case 2: We received the authorization code
         elif attrs.get('code'):
             self.callback_url = getattr(view, 'callback_url', None)
@@ -108,14 +109,17 @@ class SocialLoginSerializer(serializers.Serializer):
                 self.callback_url,
                 scope
             )
-            token = client.get_access_token(code)
-            access_token = token['access_token']
+            try:
+                token = client.get_access_token(code)
+                access_token = token['access_token']
+            except OAuth2Error:
+                raise serializers.ValidationError(_("Failed to get the access token: invalid_grant"))
 
         else:
             raise serializers.ValidationError(
                 _("Incorrect input. access_token or code is required."))
 
-        social_token = adapter.parse_token({'access_token': access_token})
+        social_token = adapter.parse_token(token)
         social_token.app = app
 
         try:
